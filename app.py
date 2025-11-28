@@ -1,34 +1,35 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from simplification_model import universal_simplify
 
-app = FastAPI(
-    title="Universal Text Simplification API",
-    description="Simplifies English, Hindi, or mixed text based on difficulty level.",
-    version="1.0.0"
+app = FastAPI()
+
+# ---------------------------------------------------
+# CORS FIX — allows frontend websites to call the API
+# ---------------------------------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # allow all domains
+    allow_credentials=True,
+    allow_methods=["*"],  # allow GET, POST, OPTIONS, etc.
+    allow_headers=["*"],  # allow all headers
 )
+# ---------------------------------------------------
 
 class SimplifyRequest(BaseModel):
     text: str
-    level: str  # "Easy" or "Hard"
+    level: str
 
 @app.post("/simplify")
 def simplify_text(request: SimplifyRequest):
-    try:
-        simplified = universal_simplify(request.text, request.level)
-        return {
-            "input": request.text,
-            "level": request.level,
-            "simplified": simplified
-        }
-    except Exception as e:
-        print("🔥 INTERNAL ERROR:", e)
-        import traceback
-        traceback.print_exc()
-        return {"error": str(e)}
-
+    simplified = universal_simplify(request.text, request.level)
+    return {
+        "input": request.text,
+        "level": request.level,
+        "simplified": simplified
+    }
 
 @app.get("/")
 def root():
-    return {"message": "Text Simplification API running successfully!"}
-
+    return {"message": "API is running!"}
