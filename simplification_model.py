@@ -2,14 +2,30 @@ import os
 import re
 import json
 import time
+
+# ----------------------------------------------------
+# FIX FOR RENDER: Set NLTK data directory manually
+# ----------------------------------------------------
+NLTK_DATA_PATH = "/opt/render/nltk_data"
+os.environ["NLTK_DATA"] = NLTK_DATA_PATH
+os.makedirs(NLTK_DATA_PATH, exist_ok=True)
+
+# Now import NLTK
 import nltk
 from nltk.tokenize import sent_tokenize
 
-# Download NLTK Punkt only if needed
+# Ensure punkt downloaded
 try:
     nltk.data.find('tokenizers/punkt')
 except LookupError:
-    nltk.download('punkt')
+    nltk.download('punkt', download_dir=NLTK_DATA_PATH)
+
+# Ensure punkt_tab downloaded
+try:
+    nltk.data.find('tokenizers/punkt_tab')
+except LookupError:
+    nltk.download('punkt_tab', download_dir=NLTK_DATA_PATH)
+
 
 # ---- Path Setup ----
 
@@ -123,3 +139,4 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     process_file(input_path, output_path, level=user_level)
     print(f"Simplification complete for '{user_level}'. Check: {output_path}")
+
