@@ -14,13 +14,21 @@ class SimplifyRequest(BaseModel):
 
 @app.post("/simplify")
 def simplify_text(request: SimplifyRequest):
-    simplified = universal_simplify(request.text, request.level)
-    return {
-        "input": request.text,
-        "level": request.level,
-        "simplified": simplified
-    }
+    try:
+        simplified = universal_simplify(request.text, request.level)
+        return {
+            "input": request.text,
+            "level": request.level,
+            "simplified": simplified
+        }
+    except Exception as e:
+        print("🔥 INTERNAL ERROR:", e)
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+
 
 @app.get("/")
 def root():
     return {"message": "Text Simplification API running successfully!"}
+
