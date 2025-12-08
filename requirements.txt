@@ -1,4 +1,3 @@
 fastapi
 uvicorn
 nltk
-language-tool-python
