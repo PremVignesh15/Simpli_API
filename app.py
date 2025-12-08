@@ -105,7 +105,7 @@ def universal_simplify(text: str, language: Optional[str] = None) -> str:
 # ---------- Sapling grammar correction (English only) ----------
 
 # WARNING: Do NOT commit a real key to a public repo.
-SAPLING_API_KEY = "YOUR_SAPLING_API_KEY_HERE"
+SAPLING_API_KEY = "27L2C1YU2RMQ9UU4MMRUPAHEOMOTXJJO"
 
 sapling_client = SaplingClient(api_key=SAPLING_API_KEY)
 SAPLING_ENABLED = True
@@ -206,3 +206,4 @@ def simplify_text(request: SimplifyRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
