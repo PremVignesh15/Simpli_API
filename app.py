@@ -36,23 +36,35 @@ TAMIL_SIMPLIFICATIONS   = load_json("tamil_simplifications.json")
 TELUGU_SIMPLIFICATIONS  = load_json("telugu_simplifications.json")
 URDU_SIMPLIFICATIONS    = load_json("urdu_simplifications.json")
 
+print(f"Loaded English: {len(ENGLISH_SIMPLIFICATIONS)} words")
+print(f"Loaded Hindi: {len(HINDI_SIMPLIFICATIONS)} words")
+print(f"Loaded Tamil: {len(TAMIL_SIMPLIFICATIONS)} words")
+print(f"Loaded Telugu: {len(TELUGU_SIMPLIFICATIONS)} words")
+print(f"Loaded Urdu: {len(URDU_SIMPLIFICATIONS)} words")
+
 # ---------- Simplification helpers ----------
 
 def simplify_generic(text: str, mapping: dict, ignore_case: bool = True) -> str:
     """
-    Replace complete words based on mapping. Uses word boundaries to avoid
-    breaking inside larger words like 'information'.
+    Replace words based on mapping.
+    - For English (ignore_case=True): use regex with word boundaries
+    - For Indic scripts (ignore_case=False): use plain string replacement (no \\b)
     """
     if not mapping:
         return text
 
     result = text
-    for hard, easy in mapping.items():
-        if ignore_case:
+    
+    if ignore_case:
+        # English: use word boundaries with case-insensitive matching
+        for hard, easy in mapping.items():
             pattern = re.compile(r'\b' + re.escape(hard) + r'\b', flags=re.IGNORECASE)
-        else:
-            pattern = re.compile(r'\b' + re.escape(hard) + r'\b')
-        result = pattern.sub(easy, result)
+            result = pattern.sub(easy, result)
+    else:
+        # Indic scripts: plain string replacement (\\b doesn't work)
+        for hard, easy in mapping.items():
+            result = result.replace(hard, easy)
+    
     return result
 
 def simplify_english(text: str) -> str:
@@ -71,6 +83,7 @@ def simplify_urdu(text: str) -> str:
     return simplify_generic(text, URDU_SIMPLIFICATIONS, ignore_case=False)
 
 def detect_language(text: str) -> str:
+    """Detect language based on Unicode character ranges."""
     for ch in text:
         code = ord(ch)
         if 0x0900 <= code <= 0x097F:
@@ -84,6 +97,7 @@ def detect_language(text: str) -> str:
     return "english"
 
 def universal_simplify(text: str, language: Optional[str] = None) -> str:
+    """Route to appropriate simplification function based on language."""
     lang = (language or "auto").lower()
 
     if lang == "auto":
@@ -145,7 +159,8 @@ def correct_grammar(text: str, language: str = "english") -> str:
             corrected = corrected[:start] + replacement + corrected[end:]
         corrected = postprocess_punctuation(corrected)
         return corrected.strip()
-    except Exception:
+    except Exception as e:
+        print(f"Sapling error: {e}")
         return text
 
 # ---------- Schemas ----------
@@ -167,9 +182,11 @@ def root():
         "status": "running",
         "version": "3.1.0",
         "sapling_enabled": SAPLING_ENABLED,
+        "supported_languages": ["English", "Hindi", "Tamil", "Telugu", "Urdu"],
         "endpoints": {
-            "simplify": "/simplify",
-            "health": "/health"
+            "simplify": "POST /simplify",
+            "health": "GET /health",
+            "docs": "GET /docs"
         }
     }
 
@@ -177,11 +194,13 @@ def root():
 def health():
     return {
         "status": "ok",
-        "english_words": len(ENGLISH_SIMPLIFICATIONS),
-        "hindi_words": len(HINDI_SIMPLIFICATIONS),
-        "tamil_words": len(TAMIL_SIMPLIFICATIONS),
-        "telugu_words": len(TELUGU_SIMPLIFICATIONS),
-        "urdu_words": len(URDU_SIMPLIFICATIONS),
+        "dictionaries": {
+            "english": len(ENGLISH_SIMPLIFICATIONS),
+            "hindi": len(HINDI_SIMPLIFICATIONS),
+            "tamil": len(TAMIL_SIMPLIFICATIONS),
+            "telugu": len(TELUGU_SIMPLIFICATIONS),
+            "urdu": len(URDU_SIMPLIFICATIONS)
+        },
         "sapling_enabled": SAPLING_ENABLED
     }
 
@@ -193,7 +212,10 @@ def simplify_text(request: SimplifyRequest):
         raise HTTPException(status_code=400, detail="Text too long (max 10,000 characters)")
 
     try:
+        # Step 1: Simplify based on dictionary
         simplified_raw = universal_simplify(request.text, request.language)
+        
+        # Step 2: Grammar correction (English only)
         simplified_corrected = correct_grammar(simplified_raw, request.language)
 
         return SimplifyResponse(
@@ -206,4 +228,3 @@ def simplify_text(request: SimplifyRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
