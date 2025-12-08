@@ -9,14 +9,14 @@ import os
 # Initialize FastAPI app
 app = FastAPI(
     title="Text Simplification API",
-    description="Multilingual text simplification for accessibility (English & Hindi)",
+    description="Multilingual text simplification for Deaf and low-literacy users (English & Hindi)",
     version="1.0.0"
 )
 
 # Enable CORS for mobile app access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your mobile app domain
+    allow_origins=["*"],  # Change to specific domains in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,20 +35,17 @@ def load_dict(filepath):
         print(f"Error: {filepath} is not valid JSON.")
         return {}
 
-# Get dictionary directory path
-DICT_DIR = os.path.join(os.path.dirname(__file__), "dictionaries")
+# Load dictionaries at startup (only standard versions, no levels)
+ENGLISH_SIMPLIFICATIONS = load_dict("english_simplifications.json")
+HINDI_SIMPLIFICATIONS = load_dict("hindi_simplifications.json")
 
-# Load all dictionaries at startup (once)
-ENGLISH_SIMPLIFICATIONS = load_dict(os.path.join(DICT_DIR, "english_simplifications.json"))
-HINDI_SIMPLIFICATIONS = load_dict(os.path.join(DICT_DIR, "hindi_simplifications.json"))
-
-print(f"Loaded {len(ENGLISH_SIMPLIFICATIONS)} English words")
-print(f"Loaded {len(HINDI_SIMPLIFICATIONS)} Hindi words")
+print(f"✅ Loaded {len(ENGLISH_SIMPLIFICATIONS)} English words")
+print(f"✅ Loaded {len(HINDI_SIMPLIFICATIONS)} Hindi words")
 
 # ---- Request/Response Models ----
 class SimplifyRequest(BaseModel):
     text: str
-    language: Optional[str] = "auto"  # "auto", "en", "hi"
+    language: Optional[str] = "auto"  # "auto", "en", "hi", "mixed"
 
 class SimplifyResponse(BaseModel):
     original: str
@@ -56,7 +53,7 @@ class SimplifyResponse(BaseModel):
     language_detected: str
     words_simplified: int
 
-# ---- Simplification Functions ----
+# ---- Language Detection ----
 def detect_language(text: str) -> str:
     """Detect if text is Hindi, English, or Mixed"""
     has_hindi = any('\u0900' <= ch <= '\u097F' for ch in text)
@@ -69,47 +66,56 @@ def detect_language(text: str) -> str:
     else:
         return "english"
 
-def simplify_english(text: str, dictionary: dict) -> tuple[str, int]:
+# ---- Simplification Functions ----
+def simplify_english(text: str, dictionary: dict) -> tuple:
     """Simplify English text using dictionary"""
     count = 0
+    simplified_text = text
+    
     for word, simple_word in dictionary.items():
         pattern = rf"\b{word}\b"
-        if re.search(pattern, text, flags=re.IGNORECASE):
-            text = re.sub(pattern, simple_word, text, flags=re.IGNORECASE)
-            count += 1
-    return text, count
+        matches = re.findall(pattern, simplified_text, flags=re.IGNORECASE)
+        if matches:
+            simplified_text = re.sub(pattern, simple_word, simplified_text, flags=re.IGNORECASE)
+            count += len(matches)
+    
+    return simplified_text, count
 
-def simplify_hindi(text: str, dictionary: dict) -> tuple[str, int]:
+def simplify_hindi(text: str, dictionary: dict) -> tuple:
     """Simplify Hindi text using dictionary"""
     count = 0
+    simplified_text = text
+    
     for word, simple_word in dictionary.items():
         pattern = rf"\b{word}\b"
-        if re.search(pattern, text):
-            text = re.sub(pattern, simple_word, text)
-            count += 1
-    return text, count
+        matches = re.findall(pattern, simplified_text)
+        if matches:
+            simplified_text = re.sub(pattern, simple_word, simplified_text)
+            count += len(matches)
+    
+    return simplified_text, count
 
-def simplify_mixed(text: str, en_dict: dict, hi_dict: dict) -> tuple[str, int]:
+def simplify_mixed(text: str, en_dict: dict, hi_dict: dict) -> tuple:
     """Simplify mixed Hindi-English text word-by-word"""
     words = text.split()
     simplified_words = []
     count = 0
     
     for word in words:
-        # Remove punctuation for matching
+        # Extract core word (remove punctuation)
         core_word = re.sub(r'[^\w\u0900-\u097F]', '', word)
         
-        # Try English dictionary
+        # Try English dictionary (lowercase)
         simple_en = en_dict.get(core_word.lower())
-        # Try Hindi dictionary
+        # Try Hindi dictionary (as-is)
         simple_hi = hi_dict.get(core_word)
         
         if simple_en:
-            new_word = word.replace(core_word, simple_en)
+            new_word = word.replace(core_word, simple_en, 1)
             simplified_words.append(new_word)
             count += 1
         elif simple_hi:
-            new_word = word.replace(core_word, simple_hi)
+            new_word = word.replace(core_word, simple_hi, 1)
             simplified_words.append(new_word)
             count += 1
         else:
@@ -117,8 +123,8 @@ def simplify_mixed(text: str, en_dict: dict, hi_dict: dict) -> tuple[str, int]:
     
     return ' '.join(simplified_words), count
 
-def universal_simplify(text: str, language: str = "auto") -> tuple[str, str, int]:
-    """Main simplification function"""
+def universal_simplify(text: str, language: str = "auto") -> tuple:
+    """Main simplification function - detects language and simplifies"""
     # Detect language if auto
     if language == "auto":
         detected_lang = detect_language(text)
@@ -138,25 +144,28 @@ def universal_simplify(text: str, language: str = "auto") -> tuple[str, str, int
 # ---- API Endpoints ----
 @app.get("/")
 def root():
-    """Health check endpoint"""
+    """Root endpoint - API information"""
     return {
-        "message": "Text Simplification API is running",
+        "message": "Text Simplification API for Accessibility",
+        "status": "running",
         "version": "1.0.0",
         "endpoints": {
-            "simplify": "/simplify (POST)",
-            "health": "/health (GET)",
-            "docs": "/docs (Swagger UI)"
+            "simplify": "POST /simplify - Simplify text",
+            "health": "GET /health - Health check",
+            "stats": "GET /stats - Dictionary statistics",
+            "docs": "GET /docs - Interactive API documentation"
         }
     }
 
 @app.get("/health")
 def health_check():
-    """Health check for monitoring"""
+    """Health check endpoint for monitoring"""
     return {
         "status": "healthy",
         "dictionaries_loaded": {
             "english": len(ENGLISH_SIMPLIFICATIONS),
-            "hindi": len(HINDI_SIMPLIFICATIONS)
+            "hindi": len(HINDI_SIMPLIFICATIONS),
+            "total": len(ENGLISH_SIMPLIFICATIONS) + len(HINDI_SIMPLIFICATIONS)
         }
     }
 
@@ -165,16 +174,29 @@ def simplify_text(request: SimplifyRequest):
     """
     Simplify text in English, Hindi, or mixed language
     
-    Example request:
+    Request Body:
     {
         "text": "Please proceed to the verification counter immediately.",
         "language": "auto"
     }
+    
+    Response:
+    {
+        "original": "Please proceed to the verification counter immediately.",
+        "simplified": "Please go to the checking desk now.",
+        "language_detected": "english",
+        "words_simplified": 3
+    }
     """
+    # Validate input
     if not request.text or request.text.strip() == "":
         raise HTTPException(status_code=400, detail="Text cannot be empty")
     
+    if len(request.text) > 10000:
+        raise HTTPException(status_code=400, detail="Text too long (max 10,000 characters)")
+    
     try:
+        # Simplify text
         simplified, detected_lang, count = universal_simplify(request.text, request.language)
         
         return SimplifyResponse(
@@ -191,8 +213,16 @@ def get_stats():
     """Get dictionary statistics"""
     return {
         "total_words": len(ENGLISH_SIMPLIFICATIONS) + len(HINDI_SIMPLIFICATIONS),
-        "english_words": len(ENGLISH_SIMPLIFICATIONS),
-        "hindi_words": len(HINDI_SIMPLIFICATIONS),
+        "languages": {
+            "english": {
+                "word_count": len(ENGLISH_SIMPLIFICATIONS),
+                "sample_words": list(ENGLISH_SIMPLIFICATIONS.keys())[:5]
+            },
+            "hindi": {
+                "word_count": len(HINDI_SIMPLIFICATIONS),
+                "sample_words": list(HINDI_SIMPLIFICATIONS.keys())[:5]
+            }
+        },
         "supported_languages": ["english", "hindi", "mixed"]
     }
 
